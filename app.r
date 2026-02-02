@@ -14,7 +14,8 @@ library(ggbeeswarm)
 library(ggtext)
 library(scales)
 library(ggprism)
-library(ggthemes)
+library(shinythemes)
+
 
 # ---- Theme (adapted from your script) ----
 myfacettheme <- theme(
@@ -35,20 +36,43 @@ myfacettheme <- theme(
 
 # ---- Helpers ----
 required_cols <- c("group", "trial", "stim_number", "gof")
-# If PI needs to be computed, we also need:
 pi_compute_cols <- c("max_fitted_amplitude")
 
-parse_group_order <- function(text, available_groups) {
-  # comma/semicolon/newline separated
-  out <- unlist(strsplit(text, "[,;\\n\\r\\t]+"))
-  out <- trimws(out)
-  out <- out[nchar(out) > 0]
-  # keep only valid, preserve order, unique
-  out <- out[out %in% available_groups]
-  out <- out[!duplicated(out)]
-  # append any missing groups (so you never lose data)
-  missing <- setdiff(available_groups, out)
-  c(out, missing)
+GGPRISM_PALS <- (function() {
+  # ggprism_data is available as a dataset in ggprism; depending on versions,
+  # it may be directly visible or only via namespace.
+  gd <- tryCatch(ggprism::ggprism_data, error = function(e) NULL)
+  if (is.null(gd)) {
+    gd <- tryCatch(getFromNamespace("ggprism_data", "ggprism"), error = function(e) NULL)
+  }
+  
+  if (!is.null(gd) && is.list(gd$fill_palettes) && length(gd$fill_palettes) > 0) {
+    return(names(gd$fill_palettes))
+  }
+  
+  # safe fallback
+  return(c("colors"))
+})()
+
+
+make_fill_scale <- function(palette_source, ggprism_palette = "colors") {
+  if (identical(palette_source, "ggprism")) {
+    sc <- tryCatch(
+      ggprism::scale_fill_prism(palette = ggprism_palette),
+      error = function(e) NULL
+    )
+    if (!is.null(sc)) return(sc)
+    return(ggplot2::scale_fill_hue())
+  }
+  ggplot2::scale_fill_hue()
+}
+
+pdf_device_fun <- function() {
+  # Prefer cairo if available (better text rendering), else pdf()
+  if (capabilities("cairo")) {
+    return(grDevices::cairo_pdf)
+  }
+  grDevices::pdf
 }
 
 compute_pi_if_needed <- function(df) {
@@ -64,6 +88,7 @@ compute_pi_if_needed <- function(df) {
   baseline <- df %>%
     group_by(group, trial, stim_number) %>%
     summarise(mean_response = mean(max_fitted_amplitude, na.rm = TRUE), .groups = "drop") %>%
+    # IMPORTANT: compare as characters to avoid 1 vs "1" issues
     filter(as.character(trial) == "1", as.character(stim_number) == "1") %>%
     transmute(group, scale_factor = mean_response)
   
@@ -73,7 +98,6 @@ compute_pi_if_needed <- function(df) {
 }
 
 prep_data <- function(df, group_levels, zeroed) {
-  # your cleaning pattern (and avoid the old across(pi, ...) selection issue)
   df <- df %>%
     mutate(across(where(is.numeric), ~ pmax(.x, 0))) %>%
     compute_pi_if_needed()
@@ -119,26 +143,26 @@ make_facet_labels <- function(df, denom_len, group_levels) {
     summarise(n = n() / denom_len, .groups = "drop") %>%
     mutate(label = paste0(as.character(group), " (n = ", n, ")"))
   
-  # return named vector for labeller
   out <- setNames(lab$label, as.character(lab$group))
-  # keep consistent ordering
   out[group_levels[group_levels %in% names(out)]]
 }
 
 make_plot <- function(df, plot_kind, test_kind, zeroed,
-                      stim_within, trial_within,
-                      stim_between) {
+                      stim_within, trial_within, stim_between,
+                      palette_source = c("ggprism", "ggplot2 (hue)"),
+                      ggprism_palette = "colors") {
   
   test_kind <- match.arg(test_kind, c("wilcox", "t"))
   
-  df <- df %>%
-    mutate(response = gof > 0.2)
+  df <- df %>% mutate(response = gof > 0.2)
   
   group_levels <- levels(df$group)
-  fill_cols <- setNames(scales::hue_pal()(length(group_levels)), group_levels)
   
-  # response colouring (match your intent)
+  # Points (response) colouring
   resp_cols <- c(`TRUE` = "black", `FALSE` = if (isTRUE(zeroed)) "red" else "black")
+  
+  # Fill palette scale for group boxes
+  fill_scale <- make_fill_scale(palette_source, ggprism_palette)
   
   if (plot_kind == "PI: within trial (stim compare)") {
     fdat <- df %>%
@@ -156,10 +180,11 @@ make_plot <- function(df, plot_kind, test_kind, zeroed,
     p <- ggplot(fdat, aes(x = stim_number, y = pi)) +
       geom_boxplot(aes(fill = group), colour = "black", linewidth = 1, alpha = 0.8) +
       ggbeeswarm::geom_beeswarm(aes(colour = response), alpha = 0.6, size = 2, priority = "ascending") +
-      scale_fill_manual(values = fill_cols) +
+      fill_scale +
       scale_colour_manual(values = resp_cols) +
       facet_wrap(~ group, nrow = 1, labeller = labeller(group = facet_labeller)) +
-      ggpubr::stat_pvalue_manual(stats, label = "p.adj.signif", tip.length = 0, size = 6, bracket.size = 1) +
+      ggpubr::stat_pvalue_manual(stats, label = "p.adj.signif", 
+                                 tip.length = 0, size = 8, bracket.size = 1, bracket.nudge.y = 0) +
       labs(title = paste("Within trial:", trial_within), x = "Stimulus", y = "Performance index (%)") +
       coord_cartesian(ylim = c(0, ylim_upper * 1.05)) +
       theme_classic() +
@@ -184,10 +209,11 @@ make_plot <- function(df, plot_kind, test_kind, zeroed,
     p <- ggplot(fdat, aes(x = trial, y = pi)) +
       geom_boxplot(aes(fill = group), colour = "black", linewidth = 1, alpha = 0.8) +
       ggbeeswarm::geom_beeswarm(aes(colour = response), alpha = 0.6, size = 2, priority = "ascending") +
-      scale_fill_manual(values = fill_cols) +
+      fill_scale +
       scale_colour_manual(values = resp_cols) +
       facet_wrap(~ group, nrow = 1, labeller = labeller(group = facet_labeller)) +
-      ggpubr::stat_pvalue_manual(stats, label = "p.adj.signif", tip.length = 0, size = 6, bracket.size = 1) +
+      ggpubr::stat_pvalue_manual(stats, label = "p.adj.signif", 
+                                 tip.length = 0, size = 8, bracket.size = 1, bracket.nudge.y = 0) +
       labs(title = paste("Between trials, stimulus", stim_between), x = "Trial", y = "Performance index (%)") +
       coord_cartesian(ylim = c(0, ylim_upper * 1.05)) +
       theme_classic() +
@@ -216,10 +242,11 @@ make_plot <- function(df, plot_kind, test_kind, zeroed,
     p <- ggplot(fdat, aes(x = stim_number, y = mean_pre_stim_speed)) +
       geom_boxplot(aes(fill = group), colour = "black", linewidth = 1, alpha = 0.8) +
       ggbeeswarm::geom_beeswarm(aes(colour = response), alpha = 0.6, size = 2, priority = "ascending") +
-      scale_fill_manual(values = fill_cols) +
+      fill_scale +
       scale_colour_manual(values = resp_cols) +
       facet_wrap(~ group, nrow = 1, labeller = labeller(group = facet_labeller)) +
-      ggpubr::stat_pvalue_manual(stats, label = "p.adj.signif", tip.length = 0, size = 6, bracket.size = 1) +
+      ggpubr::stat_pvalue_manual(stats, label = "p.adj.signif", 
+                                 tip.length = 0, size = 8, bracket.size = 1, bracket.nudge.y = 0) +
       labs(title = paste("Within trial:", trial_within), x = "Stimulus", y = "Pre stimulus speed (mm/s)") +
       coord_cartesian(ylim = c(0, ylim_upper * 1.2)) +
       theme_classic() +
@@ -248,10 +275,11 @@ make_plot <- function(df, plot_kind, test_kind, zeroed,
     p <- ggplot(fdat, aes(x = trial, y = mean_pre_stim_speed)) +
       geom_boxplot(aes(fill = group), colour = "black", linewidth = 1, alpha = 0.8) +
       ggbeeswarm::geom_beeswarm(aes(colour = response), alpha = 0.6, size = 2, priority = "ascending") +
-      scale_fill_manual(values = fill_cols) +
+      fill_scale +
       scale_colour_manual(values = resp_cols) +
       facet_wrap(~ group, nrow = 1, labeller = labeller(group = facet_labeller)) +
-      ggpubr::stat_pvalue_manual(stats, label = "p.adj.signif", tip.length = 0, size = 6, bracket.size = 1) +
+      ggpubr::stat_pvalue_manual(stats, label = "p.adj.signif", 
+                                 tip.length = 0, size = 8, bracket.size = 1, bracket.nudge.y = 0) +
       labs(title = paste("Between trials, stimulus", stim_between), x = "Trial", y = "Pre stimulus speed (mm/s)") +
       coord_cartesian(ylim = c(0, ylim_upper * 1.2)) +
       theme_classic() +
@@ -265,6 +293,7 @@ make_plot <- function(df, plot_kind, test_kind, zeroed,
 
 # ---- UI ----
 ui <- fluidPage(
+  theme = shinytheme("simplex"),
   titlePanel("DART analysis (single-fly)"),
   
   sidebarLayout(
@@ -293,7 +322,16 @@ ui <- fluidPage(
           persist = FALSE
         )
       ),
+      tags$hr(),
       
+      h4("Colours"),
+      selectInput(
+        "palette_source",
+        "Group palette source",
+        choices = c("ggprism", "ggplot2 (hue)"),
+        selected = "ggprism"
+      ),
+      uiOutput("ggprism_palette_ui"),
       tags$hr(),
       
       h4("4) Plot controls"),
@@ -322,7 +360,7 @@ ui <- fluidPage(
     mainPanel(
       tabsetPanel(
         tabPanel(
-          "Preview",
+          "Preview and plot",
           uiOutput("status_ui"),
           plotOutput("plot", height = "auto")
         ),
@@ -357,7 +395,7 @@ server <- function(input, output, session) {
     selectInput("sheet", "Sheet", choices = sheets, selected = sheets[[1]])
   })
   
-  # ---- KEY CHANGE: reactiveVal + observeEvent for the load button ----
+  # KEY: loaded data lives here
   raw_data <- reactiveVal(NULL)
   
   observeEvent(input$load_btn, {
@@ -404,6 +442,18 @@ server <- function(input, output, session) {
     )
   }, ignoreInit = TRUE)
   
+  output$ggprism_palette_ui <- renderUI({
+    req(input$palette_source)
+    if (input$palette_source != "ggprism") return(NULL)
+    
+    selectInput(
+      "ggprism_palette",
+      "ggprism palette",
+      choices = GGPRISM_PALS,
+      selected = GGPRISM_PALS[[1]]
+    )
+  })
+  
   output$trial_within_ui <- renderUI({
     df <- raw_data()
     req(!is.null(df))
@@ -420,7 +470,7 @@ server <- function(input, output, session) {
     selectizeInput(
       "stim_within", "Within-trial: stim numbers (choose 2+)",
       choices = stims,
-      selected = c(1,6),
+      selected = c(1,6),  
       multiple = TRUE
     )
   })
@@ -447,10 +497,7 @@ server <- function(input, output, session) {
     chosen <- input$group_order
     chosen <- chosen[chosen %in% grps]
     
-    if (length(chosen) == 0) {
-      showNotification("Select at least one group to include.", type = "error", duration = 6)
-      return(grps)
-    }
+    validate(need(length(chosen) > 0, "Select at least one group to include."))
     chosen
   })
   
@@ -459,12 +506,9 @@ server <- function(input, output, session) {
     req(!is.null(df))
     
     miss <- setdiff(required_cols, names(df))
-    if (length(miss) > 0) {
-      showNotification(paste("Missing required columns:", paste(miss, collapse = ", ")),
-                       type = "error", duration = 10)
-      return(NULL)
-    }
+    validate(need(length(miss) == 0, paste("Missing required columns:", paste(miss, collapse = ", "))))
     
+    # Filter out groups not selected
     df <- df %>% filter(group %in% group_levels())
     
     out <- tryCatch(
@@ -474,7 +518,6 @@ server <- function(input, output, session) {
         NULL
       }
     )
-    
     out
   })
   
@@ -482,10 +525,11 @@ server <- function(input, output, session) {
     df <- processed()
     req(!is.null(df))
     
-    # enforce safe selections
     if (grepl("within trial", input$plot_kind, ignore.case = TRUE)) {
-      req(!is.null(input$stim_within), length(input$stim_within) >= 2)
-      req(!is.null(input$trial_within), nzchar(input$trial_within))
+      validate(need(!is.null(input$stim_within) && length(input$stim_within) >= 2,
+                    "Select at least 2 stim numbers for within-trial comparison."))
+      validate(need(!is.null(input$trial_within) && nzchar(input$trial_within),
+                    "Select a trial for within-trial comparison."))
     }
     
     test_kind <- if (isTRUE(input$use_ttest)) "t" else "wilcox"
@@ -497,7 +541,9 @@ server <- function(input, output, session) {
       zeroed = input$zeroed,
       stim_within = input$stim_within,
       trial_within = input$trial_within,
-      stim_between = input$stim_between
+      stim_between = input$stim_between,
+      palette_source = input$palette_source,
+      ggprism_palette = if (!is.null(input$ggprism_palette)) input$ggprism_palette else "colors"
     )
   })
   
@@ -543,7 +589,7 @@ server <- function(input, output, session) {
       ggsave(
         filename = file,
         plot = pb$plot,
-        device = cairo_pdf,
+        device = pdf_device_fun(),
         width = input$pdf_w,
         height = input$pdf_h,
         units = "in"
@@ -551,6 +597,5 @@ server <- function(input, output, session) {
     }
   )
 }
-
 
 shinyApp(ui, server)
