@@ -373,7 +373,7 @@ make_delta_plots <- function(diffs, palette_source, ggprism_palette, title_prefi
 
 # ---- UI ----
 ui <- fluidPage(
-  titlePanel("DART analysis (single-fly)"),
+  titlePanel("DART analysis"),
   
   sidebarLayout(
     sidebarPanel(
@@ -443,7 +443,7 @@ ui <- fluidPage(
     mainPanel(
       tabsetPanel(
         tabPanel(
-          "Preview",
+          "Preview and Plotting",
           uiOutput("status_ui"),
           plotOutput("plot", height = "auto")
         ),
