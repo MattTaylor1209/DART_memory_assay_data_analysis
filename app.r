@@ -13,6 +13,8 @@ library(ggpubr)
 library(ggbeeswarm)
 library(ggtext)
 library(scales)
+library(ggprism)
+library(ggthemes)
 
 # ---- Theme (adapted from your script) ----
 myfacettheme <- theme(
