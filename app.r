@@ -291,9 +291,88 @@ make_plot <- function(df, plot_kind, test_kind, zeroed,
   stop("Unknown plot_kind")
 }
 
+# ---- Normality helpers ----
+compute_within_trial_diffs <- function(res, trial_sel, stim_a, stim_b) {
+  res %>%
+    filter(as.character(trial) == as.character(trial_sel),
+           as.character(stim_number) %in% c(as.character(stim_a), as.character(stim_b))) %>%
+    select(group, trial, fly_id, stim_number, pi) %>%
+    tidyr::pivot_wider(
+      id_cols = c(group, trial, fly_id),
+      names_from = stim_number,
+      values_from = pi,
+      names_prefix = "stim_"
+    ) %>%
+    {
+      col_a <- paste0("stim_", as.character(stim_a))
+      col_b <- paste0("stim_", as.character(stim_b))
+      if (!all(c(col_a, col_b) %in% names(.))) {
+        stop("Missing stim columns after pivot: ", paste(setdiff(c(col_a, col_b), names(.)), collapse = ", "))
+      }
+      mutate(., delta = .data[[col_b]] - .data[[col_a]])
+    } %>%
+    filter(!is.na(delta))
+}
+
+compute_between_trial_diffs <- function(res, stim_sel, trial_a, trial_b) {
+  res %>%
+    filter(as.character(stim_number) == as.character(stim_sel),
+           as.character(trial) %in% c(as.character(trial_a), as.character(trial_b))) %>%
+    select(group, trial, fly_id, stim_number, pi) %>%
+    tidyr::pivot_wider(
+      id_cols = c(group, stim_number, fly_id),
+      names_from = trial,
+      values_from = pi,
+      names_prefix = "trial_"
+    ) %>%
+    {
+      col_a <- paste0("trial_", as.character(trial_a))
+      col_b <- paste0("trial_", as.character(trial_b))
+      if (!all(c(col_a, col_b) %in% names(.))) {
+        stop("Missing trial columns after pivot: ", paste(setdiff(c(col_a, col_b), names(.)), collapse = ", "))
+      }
+      mutate(., delta = .data[[col_b]] - .data[[col_a]])
+    } %>%
+    filter(!is.na(delta))
+}
+
+make_delta_plots <- function(diffs, palette_source, ggprism_palette, title_prefix = "") {
+  fill_scale <- make_fill_scale(palette_source, ggprism_palette)
+  
+  p_hist <- ggplot(diffs, aes(x = delta)) +
+    geom_histogram(bins = 30) +
+    geom_vline(xintercept = 0, linetype = "dashed") +
+    theme_classic() +
+    labs(title = paste0(title_prefix, "Histogram of paired differences"), x = "Delta", y = "Count")
+  
+  p_qq <- ggplot(diffs, aes(sample = delta)) +
+    stat_qq() +
+    stat_qq_line() +
+    facet_wrap(~ group) +
+    theme_classic() + myfacettheme +
+    labs(title = paste0(title_prefix, "Q-Q plot of paired differences"),
+         x = "Theoretical Quantiles", y = "Sample Quantiles")
+  
+  p_density <- ggplot(diffs, aes(x = delta)) +
+    geom_density() +
+    geom_vline(xintercept = 0, linetype = "dashed") +
+    facet_wrap(~ group) +
+    theme_classic() + myfacettheme +
+    labs(title = paste0(title_prefix, "Density of paired differences"), x = "Delta", y = "Density")
+  
+  p_violin <- ggplot(diffs, aes(x = group, y = delta, fill = group)) +
+    geom_hline(yintercept = 0, linetype = "dashed") +
+    geom_violin(alpha = 0.85) +
+    geom_jitter(width = 0.12, alpha = 0.6) +
+    fill_scale +
+    theme_classic() +
+    labs(title = paste0(title_prefix, "Paired differences by group"), x = "Group", y = "Delta")
+  
+  list(hist = p_hist, qq = p_qq, density = p_density, violin = p_violin)
+}
+
 # ---- UI ----
 ui <- fluidPage(
-  theme = shinytheme("simplex"),
   titlePanel("DART analysis (single-fly)"),
   
   sidebarLayout(
@@ -349,6 +428,10 @@ ui <- fluidPage(
       uiOutput("stim_between_ui"),
       
       tags$hr(),
+      h4("Normality checks"),
+      uiOutput("normality_controls_ui"),
+      
+      tags$hr(),
       h4("5) Export PDF"),
       textInput("pdf_name", "Filename", value = "DART_plot.pdf"),
       numericInput("pdf_w", "PDF width (in)", value = 7, min = 3, max = 30, step = 0.5),
@@ -360,7 +443,7 @@ ui <- fluidPage(
     mainPanel(
       tabsetPanel(
         tabPanel(
-          "Preview and plot",
+          "Preview",
           uiOutput("status_ui"),
           plotOutput("plot", height = "auto")
         ),
@@ -368,6 +451,34 @@ ui <- fluidPage(
           "Stats",
           h4("Pairwise results (FDR-adjusted)"),
           tableOutput("stats_tbl")
+        ),
+        tabPanel(
+          "Normality",
+          tabsetPanel(
+            tabPanel(
+              "Summary stats",
+              h4("Summary stats (PI)"),
+              tableOutput("summary_stats_tbl")
+            ),
+            tabPanel(
+              "Within-trial diffs",
+              h4("Within-trial paired differences"),
+              tableOutput("shapiro_within_tbl"),
+              plotOutput("norm_hist_within", height = "300px"),
+              plotOutput("norm_qq_within", height = "350px"),
+              plotOutput("norm_density_within", height = "350px"),
+              plotOutput("norm_violin_within", height = "350px")
+            ),
+            tabPanel(
+              "Between-trial diffs",
+              h4("Between-trial paired differences"),
+              tableOutput("shapiro_between_tbl"),
+              plotOutput("norm_hist_between", height = "300px"),
+              plotOutput("norm_qq_between", height = "350px"),
+              plotOutput("norm_density_between", height = "350px"),
+              plotOutput("norm_violin_between", height = "350px")
+            )
+          )
         ),
         tabPanel(
           "Data peek",
@@ -395,7 +506,7 @@ server <- function(input, output, session) {
     selectInput("sheet", "Sheet", choices = sheets, selected = sheets[[1]])
   })
   
-  # KEY: loaded data lives here
+  # Loaded data lives here
   raw_data <- reactiveVal(NULL)
   
   observeEvent(input$load_btn, {
@@ -427,7 +538,6 @@ server <- function(input, output, session) {
     sort(unique(as.character(df$group)))
   })
   
-  # Populate group selector after load
   observeEvent(raw_data(), {
     grps <- available_groups()
     if (length(grps) == 0) {
@@ -448,9 +558,9 @@ server <- function(input, output, session) {
     
     selectInput(
       "ggprism_palette",
-      "ggprism palette",
+      "ggprism fill palette",
       choices = GGPRISM_PALS,
-      selected = GGPRISM_PALS[[1]]
+      selected = if ("colors" %in% GGPRISM_PALS) "colors" else GGPRISM_PALS[[1]]
     )
   })
   
@@ -470,7 +580,7 @@ server <- function(input, output, session) {
     selectizeInput(
       "stim_within", "Within-trial: stim numbers (choose 2+)",
       choices = stims,
-      selected = c(1,6),  
+      selected = c(1,6),
       multiple = TRUE
     )
   })
@@ -484,6 +594,42 @@ server <- function(input, output, session) {
       "stim_between", "Between-trials: stimulus",
       choices = stims,
       selected = stims[[1]]
+    )
+  })
+  
+  output$normality_controls_ui <- renderUI({
+    df <- raw_data()
+    req(!is.null(df))
+    
+    trials <- if ("trial" %in% names(df)) sort(unique(as.character(df$trial))) else character(0)
+    stims  <- if ("stim_number" %in% names(df)) sort(unique(as.character(df$stim_number))) else character(0)
+    
+    if (length(trials) == 0 || length(stims) == 0) return(helpText("Load data to enable normality controls."))
+    
+    # sensible defaults
+    stim_a_def <- if ("1" %in% stims) "1" else stims[[1]]
+    stim_b_def <- {
+      if ("6" %in% stims) "6"
+      else if (length(stims) >= 2) stims[[2]] else stims[[1]]
+    }
+    trial_def <- if ("1" %in% trials) "1" else trials[[1]]
+    trial_a_def <- if ("1" %in% trials) "1" else trials[[1]]
+    trial_b_def <- if ("2" %in% trials) "2" else if (length(trials) >= 2) trials[[2]] else trials[[1]]
+    
+    tagList(
+      tags$strong("Within-trial delta (stim B − stim A)"),
+      selectInput("norm_trial", "Trial", choices = trials, selected = trial_def),
+      fluidRow(
+        column(6, selectInput("norm_stim_a", "Stim A", choices = stims, selected = stim_a_def)),
+        column(6, selectInput("norm_stim_b", "Stim B", choices = stims, selected = stim_b_def))
+      ),
+      tags$hr(),
+      tags$strong("Between-trial delta (trial B − trial A)"),
+      selectInput("norm_stim_between", "Stimulus", choices = stims, selected = stim_a_def),
+      fluidRow(
+        column(6, selectInput("norm_trial_a", "Trial A", choices = trials, selected = trial_a_def)),
+        column(6, selectInput("norm_trial_b", "Trial B", choices = trials, selected = trial_b_def))
+      )
     )
   })
   
@@ -508,7 +654,7 @@ server <- function(input, output, session) {
     miss <- setdiff(required_cols, names(df))
     validate(need(length(miss) == 0, paste("Missing required columns:", paste(miss, collapse = ", "))))
     
-    # Filter out groups not selected
+    # filter out groups not selected
     df <- df %>% filter(group %in% group_levels())
     
     out <- tryCatch(
@@ -521,6 +667,110 @@ server <- function(input, output, session) {
     out
   })
   
+  # ---- Summary stats ----
+  summary_stats <- reactive({
+    res <- processed()
+    req(!is.null(res))
+    res %>%
+      group_by(group, stim_number, trial) %>%
+      rstatix::get_summary_stats(pi)
+  })
+  
+  output$summary_stats_tbl <- renderTable({
+    summary_stats()
+  })
+  
+  # ---- Normality: within-trial diffs ----
+  diffs_within <- reactive({
+    res <- processed()
+    req(!is.null(res), !is.null(input$norm_trial), !is.null(input$norm_stim_a), !is.null(input$norm_stim_b))
+    
+    validate(need(input$norm_stim_a != input$norm_stim_b, "Stim A and Stim B must be different."))
+    
+    tryCatch(
+      compute_within_trial_diffs(res, input$norm_trial, input$norm_stim_a, input$norm_stim_b),
+      error = function(e) {
+        showNotification(paste("Within-trial diffs failed:", e$message), type = "error", duration = 10)
+        NULL
+      }
+    )
+  })
+  
+  shapiro_within <- reactive({
+    d <- diffs_within()
+    req(!is.null(d))
+    tryCatch(
+      d %>% group_by(group) %>% shapiro_test(delta),
+      error = function(e) tibble(group = NA, variable = "delta", statistic = NA_real_, p = NA_real_)
+    )
+  })
+  
+  within_plots <- reactive({
+    d <- diffs_within()
+    req(!is.null(d))
+    make_delta_plots(
+      d,
+      palette_source = input$palette_source,
+      ggprism_palette = if (!is.null(input$ggprism_palette)) input$ggprism_palette else "colors",
+      title_prefix = paste0("Trial ", input$norm_trial, ", Δ(", input$norm_stim_b, "−", input$norm_stim_a, "): ")
+    )
+  })
+  
+  output$shapiro_within_tbl <- renderTable({
+    shapiro_within()
+  })
+  
+  output$norm_hist_within <- renderPlot({ within_plots()$hist })
+  output$norm_qq_within <- renderPlot({ within_plots()$qq })
+  output$norm_density_within <- renderPlot({ within_plots()$density })
+  output$norm_violin_within <- renderPlot({ within_plots()$violin })
+  
+  # ---- Normality: between-trial diffs ----
+  diffs_between <- reactive({
+    res <- processed()
+    req(!is.null(res), !is.null(input$norm_stim_between), !is.null(input$norm_trial_a), !is.null(input$norm_trial_b))
+    
+    validate(need(input$norm_trial_a != input$norm_trial_b, "Trial A and Trial B must be different."))
+    
+    tryCatch(
+      compute_between_trial_diffs(res, input$norm_stim_between, input$norm_trial_a, input$norm_trial_b),
+      error = function(e) {
+        showNotification(paste("Between-trial diffs failed:", e$message), type = "error", duration = 10)
+        NULL
+      }
+    )
+  })
+  
+  shapiro_between <- reactive({
+    d <- diffs_between()
+    req(!is.null(d))
+    tryCatch(
+      d %>% group_by(group) %>% shapiro_test(delta),
+      error = function(e) tibble(group = NA, variable = "delta", statistic = NA_real_, p = NA_real_)
+    )
+  })
+  
+  between_plots <- reactive({
+    d <- diffs_between()
+    req(!is.null(d))
+    make_delta_plots(
+      d,
+      palette_source = input$palette_source,
+      ggprism_palette = if (!is.null(input$ggprism_palette)) input$ggprism_palette else "colors",
+      title_prefix = paste0("Stim ", input$norm_stim_between, ", Δ(trial ", input$norm_trial_b, "−", input$norm_trial_a, "): ")
+    )
+  })
+  
+  output$shapiro_between_tbl <- renderTable({
+    shapiro_between()
+  })
+  
+  output$norm_hist_between <- renderPlot({ between_plots()$hist })
+  output$norm_qq_between <- renderPlot({ between_plots()$qq })
+  output$norm_density_between <- renderPlot({ between_plots()$density })
+  output$norm_violin_between <- renderPlot({ between_plots()$violin })
+  
+  # ---- Main plot bundle ----
   plot_bundle <- reactive({
     df <- processed()
     req(!is.null(df))
