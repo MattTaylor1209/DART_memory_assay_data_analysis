@@ -374,7 +374,7 @@ make_delta_plots <- function(diffs, palette_source, ggprism_palette, title_prefi
 # ---- UI ----
 ui <- fluidPage(
   titlePanel("DART analysis"),
-  
+  shinytheme(theme = "simplex"),
   sidebarLayout(
     sidebarPanel(
       h4("1) Load data"),
