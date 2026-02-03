@@ -137,18 +137,26 @@ pairwise_within_group <- function(data, y, x, test = c("wilcox", "t")) {
     add_significance("p.adj")
 }
 
-make_facet_labels <- function(df, denom_len, group_levels) {
+make_facet_labels <- function(df, denom_len, group_levels, n_label = TRUE) {
+  
   lab <- df %>%
     group_by(group) %>%
     summarise(n = n() / denom_len, .groups = "drop") %>%
-    mutate(label = paste0(as.character(group), " (n = ", n, ")"))
+    mutate(n = as.integer(round(n)))  # avoids "12.0" etc
+  
+  lab <- if (isTRUE(n_label)) {
+    lab %>% mutate(label = paste0(as.character(group), " (n = ", n, ")"))
+  } else {
+    lab %>% mutate(label = as.character(group))
+  }
   
   out <- setNames(lab$label, as.character(lab$group))
   out[group_levels[group_levels %in% names(out)]]
 }
 
+
 make_plot <- function(df, plot_kind, test_kind, zeroed,
-                      stim_within, trial_within, stim_between,
+                      stim_within, trial_within, stim_between, n_label,
                       palette_source = c("ggprism", "ggplot2 (hue)"),
                       ggprism_palette = "colors") {
   
@@ -175,7 +183,9 @@ make_plot <- function(df, plot_kind, test_kind, zeroed,
     ylim_upper <- ceiling(ymax * 1.1 * 10) / 10
     stats$y.position <- seq(ylim_upper * 0.95, by = 0.05, length.out = nrow(stats))
     
-    facet_labeller <- make_facet_labels(fdat, denom_len = length(stim_within), group_levels = group_levels)
+    facet_labeller <- make_facet_labels(fdat, denom_len = length(stim_within), 
+                                        group_levels = group_levels,
+                                        n_label = n_label)
     
     p <- ggplot(fdat, aes(x = stim_number, y = pi)) +
       geom_boxplot(aes(fill = group), colour = "black", linewidth = 1, alpha = 0.8) +
@@ -204,7 +214,9 @@ make_plot <- function(df, plot_kind, test_kind, zeroed,
     ylim_upper <- ceiling(ymax * 1.1 * 10) / 10
     stats$y.position <- seq(ylim_upper * 0.95, by = 0.05, length.out = nrow(stats))
     
-    facet_labeller <- make_facet_labels(fdat, denom_len = 2, group_levels = group_levels)
+    facet_labeller <- make_facet_labels(fdat, denom_len = 2, 
+                                        group_levels = group_levels,
+                                        n_label = n_label)
     
     p <- ggplot(fdat, aes(x = trial, y = pi)) +
       geom_boxplot(aes(fill = group), colour = "black", linewidth = 1, alpha = 0.8) +
@@ -237,7 +249,9 @@ make_plot <- function(df, plot_kind, test_kind, zeroed,
     ylim_upper <- ceiling(ymax * 1.1 * 10) / 10
     stats$y.position <- seq(ylim_upper * 0.95, by = 0.05, length.out = nrow(stats))
     
-    facet_labeller <- make_facet_labels(fdat, denom_len = length(stim_within), group_levels = group_levels)
+    facet_labeller <- make_facet_labels(fdat, denom_len = length(stim_within), 
+                                        group_levels = group_levels,
+                                        n_label = n_label)
     
     p <- ggplot(fdat, aes(x = stim_number, y = mean_pre_stim_speed)) +
       geom_boxplot(aes(fill = group), colour = "black", linewidth = 1, alpha = 0.8) +
@@ -270,7 +284,9 @@ make_plot <- function(df, plot_kind, test_kind, zeroed,
     ylim_upper <- ceiling(ymax * 1.1 * 10) / 10
     stats$y.position <- seq(ylim_upper * 0.95, by = 0.05, length.out = nrow(stats))
     
-    facet_labeller <- make_facet_labels(fdat, denom_len = 2, group_levels = group_levels)
+    facet_labeller <- make_facet_labels(fdat, denom_len = 2, 
+                                        group_levels = group_levels,
+                                        n_label = n_label)
     
     p <- ggplot(fdat, aes(x = trial, y = mean_pre_stim_speed)) +
       geom_boxplot(aes(fill = group), colour = "black", linewidth = 1, alpha = 0.8) +
@@ -386,6 +402,7 @@ ui <- fluidPage(
       h4("2) Options"),
       checkboxInput("use_ttest", "Use paired t-test (otherwise paired Wilcoxon)", value = FALSE),
       checkboxInput("zeroed", "Zero PI when GOF < 0.2", value = FALSE),
+      checkboxInput("n_label", "Show n numbers in facet labels?", value = TRUE),
       tags$hr(),
       
       h4("3) Group order"),
@@ -786,6 +803,7 @@ server <- function(input, output, session) {
     
     make_plot(
       df = df,
+      n_label = input$n_label,
       plot_kind = input$plot_kind,
       test_kind = test_kind,
       zeroed = input$zeroed,
