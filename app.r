@@ -850,10 +850,15 @@ server <- function(input, output, session) {
   
   output$stats_tbl <- renderTable({
     pb <- plot_bundle()
+    
     pb$stats %>%
       as.data.frame() %>%
-      dplyr::select(group, everything())
-  })
+      dplyr::select(group, everything()) %>%
+      dplyr::mutate(
+        dplyr::across(where(is.numeric), ~ formatC(.x, format = "g", digits = 3))
+      )
+  }, striped = TRUE, na = "")
+  
   
   output$data_head <- renderTable({
     df <- processed()
