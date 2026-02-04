@@ -729,7 +729,9 @@ server <- function(input, output, session) {
     d <- diffs_within()
     req(!is.null(d))
     tryCatch(
-      d %>% group_by(group) %>% shapiro_test(delta),
+      d %>% group_by(group) %>% shapiro_test(delta) %>% dplyr::mutate(
+        dplyr::across(where(is.numeric), ~ formatC(.x, format = "g", digits = 3))
+      ),
       error = function(e) tibble(group = NA, variable = "delta", statistic = NA_real_, p = NA_real_)
     )
   })
@@ -774,7 +776,9 @@ server <- function(input, output, session) {
     d <- diffs_between()
     req(!is.null(d))
     tryCatch(
-      d %>% group_by(group) %>% shapiro_test(delta),
+      d %>% group_by(group) %>% shapiro_test(delta) %>% dplyr::mutate(
+        dplyr::across(where(is.numeric), ~ formatC(.x, format = "g", digits = 3))
+      ),
       error = function(e) tibble(group = NA, variable = "delta", statistic = NA_real_, p = NA_real_)
     )
   })
