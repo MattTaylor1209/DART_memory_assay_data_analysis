@@ -157,7 +157,7 @@ make_facet_labels <- function(df, denom_len, group_levels, n_label = TRUE) {
 
 make_plot <- function(df, plot_kind, test_kind, zeroed, alpha,
                       stim_within, trial_within, stim_between, n_label, 
-                      col_by_group = TRUE,
+                      col_by_group = TRUE, ylimit, 
                       palette_source = c("ggprism", "ggplot2 (hue)"),
                       ggprism_palette = "colors") {
   
@@ -184,8 +184,8 @@ make_plot <- function(df, plot_kind, test_kind, zeroed, alpha,
     
     stats <- pairwise_within_group(fdat, y = "pi", x = "stim_number", test = test_kind)
     ymax <- max(fdat$pi, na.rm = TRUE)
-    ylim_upper <- ceiling(ymax * 1.1 * 10) / 10
-    stats$y.position <- seq(ylim_upper * 0.95, by = 0.05, length.out = nrow(stats))
+    #ylim_upper <- ceiling(ymax * 1.1 * 10) / 10
+    stats$y.position <- seq(ylimit * 0.95, by = 0.05, length.out = nrow(stats))
     
     facet_labeller <- make_facet_labels(fdat, denom_len = length(stim_within), 
                                         group_levels = group_levels,
@@ -201,7 +201,7 @@ make_plot <- function(df, plot_kind, test_kind, zeroed, alpha,
       ggpubr::stat_pvalue_manual(stats, label = "p.adj.signif", 
                                  tip.length = 0, size = 8, bracket.size = 1, bracket.nudge.y = 0) +
       labs(title = paste("Within trial:", trial_within), x = "Stimulus", y = "Performance index (%)") +
-      coord_cartesian(ylim = c(0, ylim_upper * 1.05)) +
+      coord_cartesian(ylim = c(0, ylimit)) +
       theme_classic() +
       myfacettheme
     
@@ -216,8 +216,8 @@ make_plot <- function(df, plot_kind, test_kind, zeroed, alpha,
     
     stats <- pairwise_within_group(fdat, y = "pi", x = "trial", test = test_kind)
     ymax <- max(fdat$pi, na.rm = TRUE)
-    ylim_upper <- ceiling(ymax * 1.1 * 10) / 10
-    stats$y.position <- seq(ylim_upper * 0.95, by = 0.05, length.out = nrow(stats))
+    #ylim_upper <- ceiling(ymax * 1.1 * 10) / 10
+    stats$y.position <- seq(ylimit * 0.95, by = 0.05, length.out = nrow(stats))
     
     facet_labeller <- make_facet_labels(fdat, denom_len = 2, 
                                         group_levels = group_levels,
@@ -233,7 +233,7 @@ make_plot <- function(df, plot_kind, test_kind, zeroed, alpha,
       ggpubr::stat_pvalue_manual(stats, label = "p.adj.signif", 
                                  tip.length = 0, size = 8, bracket.size = 1, bracket.nudge.y = 0) +
       labs(title = paste("Between trials, stimulus", stim_between), x = "Trial", y = "Performance index (%)") +
-      coord_cartesian(ylim = c(0, ylim_upper * 1.05)) +
+      coord_cartesian(ylim = c(0, ylimit)) +
       theme_classic() +
       myfacettheme
     
@@ -252,8 +252,8 @@ make_plot <- function(df, plot_kind, test_kind, zeroed, alpha,
     
     stats <- pairwise_within_group(fdat, y = "mean_pre_stim_speed", x = "stim_number", test = test_kind)
     ymax <- max(fdat$mean_pre_stim_speed, na.rm = TRUE)
-    ylim_upper <- ceiling(ymax * 1.1 * 10) / 10
-    stats$y.position <- seq(ylim_upper * 0.95, by = 0.05, length.out = nrow(stats))
+    #ylim_upper <- ceiling(ymax * 1.1 * 10) / 10
+    stats$y.position <- seq(ylimit * 0.95, by = 0.05, length.out = nrow(stats))
     
     facet_labeller <- make_facet_labels(fdat, denom_len = length(stim_within), 
                                         group_levels = group_levels,
@@ -269,7 +269,7 @@ make_plot <- function(df, plot_kind, test_kind, zeroed, alpha,
       ggpubr::stat_pvalue_manual(stats, label = "p.adj.signif", 
                                  tip.length = 0, size = 8, bracket.size = 1, bracket.nudge.y = 0) +
       labs(title = paste("Within trial:", trial_within), x = "Stimulus", y = "Pre stimulus speed (mm/s)") +
-      coord_cartesian(ylim = c(0, ylim_upper * 1.2)) +
+      coord_cartesian(ylim = c(0, ylimit)) +
       theme_classic() +
       myfacettheme
     
@@ -287,9 +287,9 @@ make_plot <- function(df, plot_kind, test_kind, zeroed, alpha,
       mutate(trial = factor(trial, levels = c("1", "2")))
     
     stats <- pairwise_within_group(fdat, y = "mean_pre_stim_speed", x = "trial", test = test_kind)
-    ymax <- max(fdat$mean_pre_stim_speed, na.rm = TRUE)
+    #ymax <- max(fdat$mean_pre_stim_speed, na.rm = TRUE)
     ylim_upper <- ceiling(ymax * 1.1 * 10) / 10
-    stats$y.position <- seq(ylim_upper * 0.95, by = 0.05, length.out = nrow(stats))
+    stats$y.position <- seq(ylimit * 0.95, by = 0.05, length.out = nrow(stats))
     
     facet_labeller <- make_facet_labels(fdat, denom_len = 2, 
                                         group_levels = group_levels,
@@ -305,7 +305,7 @@ make_plot <- function(df, plot_kind, test_kind, zeroed, alpha,
       ggpubr::stat_pvalue_manual(stats, label = "p.adj.signif", 
                                  tip.length = 0, size = 8, bracket.size = 1, bracket.nudge.y = 0) +
       labs(title = paste("Between trials, stimulus", stim_between), x = "Trial", y = "Pre stimulus speed (mm/s)") +
-      coord_cartesian(ylim = c(0, ylim_upper * 1.2)) +
+      coord_cartesian(ylim = c(0, ylimit)) +
       theme_classic() +
       myfacettheme
     
@@ -441,6 +441,8 @@ ui <- fluidPage(
       tags$hr(),
       
       h4("4) Plot controls"),
+      numericInput("ylimit", "y-axis upper limit", value = 400 ,min = 50, max = 700, 
+                   step = 10, updateOn = "blur"),
       selectInput(
         "plot_kind", "Plot type",
         choices = c(
@@ -815,6 +817,7 @@ server <- function(input, output, session) {
       df = df,
       alpha = input$alpha, 
       n_label = input$n_label,
+      ylimit = input$ylimit,
       col_by_group = input$col_by_group, 
       plot_kind = input$plot_kind,
       test_kind = test_kind,
