@@ -155,7 +155,7 @@ make_facet_labels <- function(df, denom_len, group_levels, n_label = TRUE) {
 }
 
 
-make_plot <- function(df, plot_kind, test_kind, zeroed,
+make_plot <- function(df, plot_kind, test_kind, zeroed, alpha,
                       stim_within, trial_within, stim_between, n_label, 
                       col_by_group = TRUE,
                       palette_source = c("ggprism", "ggplot2 (hue)"),
@@ -193,7 +193,7 @@ make_plot <- function(df, plot_kind, test_kind, zeroed,
     
     p <- ggplot(fdat, aes(x = stim_number, y = pi)) +
       geom_boxplot(aes(fill = .data[[fill_var]]), 
-                   colour = "black", linewidth = 1, alpha = 0.8) +
+                   colour = "black", linewidth = 1, alpha = alpha) +
       ggbeeswarm::geom_beeswarm(aes(colour = response), alpha = 0.6, size = 2, priority = "ascending") +
       fill_scale +
       scale_colour_manual(values = resp_cols) +
@@ -225,7 +225,7 @@ make_plot <- function(df, plot_kind, test_kind, zeroed,
     
     p <- ggplot(fdat, aes(x = trial, y = pi)) +
       geom_boxplot(aes(fill = .data[[fill_var]]), 
-                   colour = "black", linewidth = 1, alpha = 0.8) +
+                   colour = "black", linewidth = 1, alpha = alpha) +
       ggbeeswarm::geom_beeswarm(aes(colour = response), alpha = 0.6, size = 2, priority = "ascending") +
       fill_scale +
       scale_colour_manual(values = resp_cols) +
@@ -261,7 +261,7 @@ make_plot <- function(df, plot_kind, test_kind, zeroed,
     
     p <- ggplot(fdat, aes(x = stim_number, y = mean_pre_stim_speed)) +
       geom_boxplot(aes(fill = .data[[fill_var]]), 
-                   colour = "black", linewidth = 1, alpha = 0.8) +
+                   colour = "black", linewidth = 1, alpha = alpha) +
       ggbeeswarm::geom_beeswarm(aes(colour = response), alpha = 0.6, size = 2, priority = "ascending") +
       fill_scale +
       scale_colour_manual(values = resp_cols) +
@@ -297,7 +297,7 @@ make_plot <- function(df, plot_kind, test_kind, zeroed,
     
     p <- ggplot(fdat, aes(x = trial, y = mean_pre_stim_speed)) +
       geom_boxplot(aes(fill = .data[[fill_var]]), 
-                   colour = "black", linewidth = 1, alpha = 0.8) +
+                   colour = "black", linewidth = 1, alpha = alpha) +
       ggbeeswarm::geom_beeswarm(aes(colour = response), alpha = 0.6, size = 2, priority = "ascending") +
       fill_scale +
       scale_colour_manual(values = resp_cols) +
@@ -437,6 +437,7 @@ ui <- fluidPage(
         selected = "ggprism"
       ),
       uiOutput("ggprism_palette_ui"),
+      sliderInput("alpha", "Fill alpha level", min = 0, max = 1, value = 0.8, step = 0.025),
       tags$hr(),
       
       h4("4) Plot controls"),
@@ -812,6 +813,7 @@ server <- function(input, output, session) {
     
     make_plot(
       df = df,
+      alpha = input$alpha, 
       n_label = input$n_label,
       col_by_group = input$col_by_group, 
       plot_kind = input$plot_kind,
