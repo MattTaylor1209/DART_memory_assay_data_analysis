@@ -156,7 +156,8 @@ make_facet_labels <- function(df, denom_len, group_levels, n_label = TRUE) {
 
 
 make_plot <- function(df, plot_kind, test_kind, zeroed,
-                      stim_within, trial_within, stim_between, n_label,
+                      stim_within, trial_within, stim_between, n_label, 
+                      col_by_group = TRUE,
                       palette_source = c("ggprism", "ggplot2 (hue)"),
                       ggprism_palette = "colors") {
   
@@ -171,6 +172,9 @@ make_plot <- function(df, plot_kind, test_kind, zeroed,
   
   # Fill palette scale for group boxes
   fill_scale <- make_fill_scale(palette_source, ggprism_palette)
+  
+  # Variable to set fill colour by
+  fill_var <- if (isTRUE(col_by_group)) "group" else "stim_number"
   
   if (plot_kind == "PI: within trial (stim compare)") {
     fdat <- df %>%
@@ -188,7 +192,8 @@ make_plot <- function(df, plot_kind, test_kind, zeroed,
                                         n_label = n_label)
     
     p <- ggplot(fdat, aes(x = stim_number, y = pi)) +
-      geom_boxplot(aes(fill = group), colour = "black", linewidth = 1, alpha = 0.8) +
+      geom_boxplot(aes(fill = .data[[fill_var]]), 
+                   colour = "black", linewidth = 1, alpha = 0.8) +
       ggbeeswarm::geom_beeswarm(aes(colour = response), alpha = 0.6, size = 2, priority = "ascending") +
       fill_scale +
       scale_colour_manual(values = resp_cols) +
@@ -219,7 +224,8 @@ make_plot <- function(df, plot_kind, test_kind, zeroed,
                                         n_label = n_label)
     
     p <- ggplot(fdat, aes(x = trial, y = pi)) +
-      geom_boxplot(aes(fill = group), colour = "black", linewidth = 1, alpha = 0.8) +
+      geom_boxplot(aes(fill = .data[[fill_var]]), 
+                   colour = "black", linewidth = 1, alpha = 0.8) +
       ggbeeswarm::geom_beeswarm(aes(colour = response), alpha = 0.6, size = 2, priority = "ascending") +
       fill_scale +
       scale_colour_manual(values = resp_cols) +
@@ -254,7 +260,8 @@ make_plot <- function(df, plot_kind, test_kind, zeroed,
                                         n_label = n_label)
     
     p <- ggplot(fdat, aes(x = stim_number, y = mean_pre_stim_speed)) +
-      geom_boxplot(aes(fill = group), colour = "black", linewidth = 1, alpha = 0.8) +
+      geom_boxplot(aes(fill = .data[[fill_var]]), 
+                   colour = "black", linewidth = 1, alpha = 0.8) +
       ggbeeswarm::geom_beeswarm(aes(colour = response), alpha = 0.6, size = 2, priority = "ascending") +
       fill_scale +
       scale_colour_manual(values = resp_cols) +
@@ -289,7 +296,8 @@ make_plot <- function(df, plot_kind, test_kind, zeroed,
                                         n_label = n_label)
     
     p <- ggplot(fdat, aes(x = trial, y = mean_pre_stim_speed)) +
-      geom_boxplot(aes(fill = group), colour = "black", linewidth = 1, alpha = 0.8) +
+      geom_boxplot(aes(fill = .data[[fill_var]]), 
+                   colour = "black", linewidth = 1, alpha = 0.8) +
       ggbeeswarm::geom_beeswarm(aes(colour = response), alpha = 0.6, size = 2, priority = "ascending") +
       fill_scale +
       scale_colour_manual(values = resp_cols) +
@@ -421,6 +429,7 @@ ui <- fluidPage(
       tags$hr(),
       
       h4("Colours"),
+      checkboxInput("col_by_group", "Colour by group (or stimulus if unchecked)?", value = TRUE),
       selectInput(
         "palette_source",
         "Group palette source",
@@ -804,6 +813,7 @@ server <- function(input, output, session) {
     make_plot(
       df = df,
       n_label = input$n_label,
+      col_by_group = input$col_by_group, 
       plot_kind = input$plot_kind,
       test_kind = test_kind,
       zeroed = input$zeroed,
