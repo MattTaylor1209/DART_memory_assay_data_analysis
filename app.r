@@ -25,7 +25,7 @@ myfacettheme <- theme(
   axis.title.x = element_text(colour = "black", face = "bold", size = 14),
   axis.text.x  = element_text(colour = "grey30", face = "bold", size = 14),
   axis.ticks   = element_line(linewidth = 1, colour = "black"),
-  panel.border = element_rect(colour = "black", fill = NA, linewidth = 1),
+  panel.border = element_rect(colour = "black", fill = NA, linewidth = 2),
   panel.grid   = element_blank(),
   legend.title = element_blank(),
   legend.position = "none",
