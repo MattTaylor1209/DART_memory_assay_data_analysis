@@ -120,22 +120,27 @@ prep_data <- function(df, group_levels, zeroed) {
   df
 }
 
-pairwise_within_group <- function(data, y, x, test = c("wilcox", "t")) {
+pairwise_within_group <- function(data, y, x, test = c("wilcox", "t"), n_planned = 2) {
   test <- match.arg(test)
-  data %>%
+  f <- reformulate(x, response = y)
+  
+  out <- data %>%
     group_by(group) %>%
     {
       if (test == "t") {
-        rstatix::pairwise_t_test(., formula = as.formula(paste0(y, " ~ ", x)),
-                                 paired = TRUE, id = "fly_id")
+        pairwise_t_test(., f, paired = TRUE, id = "fly_id", p.adjust.method = "none")
       } else {
-        rstatix::pairwise_wilcox_test(., formula = as.formula(paste0(y, " ~ ", x)),
-                                      paired = TRUE, id = "fly_id")
+        pairwise_wilcox_test(., f, paired = TRUE, id = "fly_id", p.adjust.method = "none")
       }
     } %>%
-    adjust_pvalue(method = "fdr") %>%
+    group_by(group) %>%
+    mutate(p.adj = p.adjust(p, method = "holm", n = n_planned)) %>%
+    ungroup() %>%
     add_significance("p.adj")
+  
+  out
 }
+
 
 make_facet_labels <- function(df, denom_len, group_levels, n_label = TRUE) {
   
@@ -157,7 +162,7 @@ make_facet_labels <- function(df, denom_len, group_levels, n_label = TRUE) {
 
 make_plot <- function(df, plot_kind, test_kind, zeroed, alpha,
                       stim_within, trial_within, stim_between, n_label, 
-                      col_by_group = TRUE, ylimit, 
+                      col_by_group = TRUE, ylimit,
                       palette_source = c("ggprism", "ggplot2 (hue)"),
                       ggprism_palette = "colors") {
   
@@ -478,7 +483,7 @@ ui <- fluidPage(
         ),
         tabPanel(
           "Stats",
-          h4("Pairwise results (FDR-adjusted)"),
+          h4("Pairwise results (holm-adjusted)"),
           tableOutput("stats_tbl")
         ),
         tabPanel(
