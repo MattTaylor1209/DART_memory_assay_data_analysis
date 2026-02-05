@@ -27,10 +27,11 @@ myfacettheme <- theme(
   axis.ticks   = element_line(linewidth = 1, colour = "black"),
   panel.border = element_rect(colour = "black", fill = NA, linewidth = 2),
   panel.grid   = element_blank(),
+  axis.line = element_blank(),
   legend.title = element_blank(),
   legend.position = "none",
   legend.text  = element_text(colour = "black", size = 10),
-  strip.background = element_rect(colour = "black", linewidth = 1.5, fill = "grey30"),
+  strip.background = element_rect(colour = "black", linewidth = 2, fill = "grey30"),
   strip.text.x = element_text(size = 12, face = "bold", colour = "white")
 )
 
