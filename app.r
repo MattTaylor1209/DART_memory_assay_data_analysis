@@ -120,26 +120,120 @@ prep_data <- function(df, group_levels, zeroed) {
   df
 }
 
-pairwise_within_group <- function(data, y, x, test = c("wilcox", "t"), n_planned = 2) {
-  test <- match.arg(test)
+# Raw pairwise tests with no p-value adjustment
+run_pairwise_raw <- function(data, y, x, test_kind = c("wilcox", "t")) {
+  test_kind <- match.arg(test_kind)
   f <- reformulate(x, response = y)
   
-  out <- data %>%
+  data %>%
     group_by(group) %>%
     {
-      if (test == "t") {
-        pairwise_t_test(., f, paired = TRUE, id = "fly_id", p.adjust.method = "none")
+      if (test_kind == "t") {
+        rstatix::pairwise_t_test(., f, paired = TRUE, id = "fly_id", p.adjust.method = "none")
       } else {
-        pairwise_wilcox_test(., f, paired = TRUE, id = "fly_id", p.adjust.method = "none")
+        rstatix::pairwise_wilcox_test(., f, paired = TRUE, id = "fly_id", p.adjust.method = "none")
       }
     } %>%
-    group_by(group) %>%
-    mutate(p.adj = p.adjust(p, method = "holm", n = n_planned)) %>%
-    ungroup() %>%
-    add_significance("p.adj")
-  
-  out
+    ungroup()
 }
+
+
+compute_all_stats <- function(df,
+                              test_kind = c("wilcox", "t"),
+                              trial_within,
+                              stim_within,
+                              stim_between,
+                              p_adjust_method = "holm",
+                              correct_across = c("within_endpoint", "across_endpoints")) {
+  
+  test_kind <- match.arg(test_kind)
+  correct_across <- match.arg(correct_across)
+  
+  trial_within  <- as.character(trial_within)
+  stim_within   <- as.character(stim_within)
+  stim_between  <- as.character(stim_between)
+  
+  # Planned hypothesis count for the endpoint family:
+  # - within-trial: all pairs among selected stimuli
+  # - between-trial: trial 1 vs 2 at selected stimulus (1 comparison)
+  n_within  <- choose(length(stim_within), 2)
+  n_between <- 1L
+  n_planned <- n_within + n_between
+  
+  # --- PI: within trial (stim compare) ---
+  pi_within <- df %>%
+    filter(trial == trial_within, stim_number %in% stim_within) %>%
+    mutate(stim_number = factor(stim_number, levels = stim_within)) %>%
+    run_pairwise_raw(y = "pi", x = "stim_number", test_kind = test_kind) %>%
+    mutate(
+      endpoint  = "pi",
+      contrast  = "within_trial",
+      trial_sel = trial_within,
+      stim_sel  = NA_character_,
+      n_planned = n_planned
+    )
+  
+  # --- PI: between trials (trial compare) ---
+  pi_between <- df %>%
+    filter(stim_number == stim_between, trial %in% c("1", "2")) %>%
+    mutate(trial = factor(trial, levels = c("1", "2"))) %>%
+    run_pairwise_raw(y = "pi", x = "trial", test_kind = test_kind) %>%
+    mutate(
+      endpoint  = "pi",
+      contrast  = "between_trial",
+      trial_sel = NA_character_,
+      stim_sel  = stim_between,
+      n_planned = n_planned
+    )
+  
+  # --- Speed: within trial (stim compare) ---
+  sp_within <- df %>%
+    filter(trial == trial_within, stim_number %in% stim_within) %>%
+    mutate(stim_number = factor(stim_number, levels = stim_within)) %>%
+    run_pairwise_raw(y = "mean_pre_stim_speed", x = "stim_number", test_kind = test_kind) %>%
+    mutate(
+      endpoint  = "speed",
+      contrast  = "within_trial",
+      trial_sel = trial_within,
+      stim_sel  = NA_character_,
+      n_planned = n_planned
+    )
+  
+  # --- Speed: between trials (trial compare) ---
+  sp_between <- df %>%
+    filter(stim_number == stim_between, trial %in% c("1", "2")) %>%
+    mutate(trial = factor(trial, levels = c("1", "2"))) %>%
+    run_pairwise_raw(y = "mean_pre_stim_speed", x = "trial", test_kind = test_kind) %>%
+    mutate(
+      endpoint  = "speed",
+      contrast  = "between_trial",
+      trial_sel = NA_character_,
+      stim_sel  = stim_between,
+      n_planned = n_planned
+    )
+  
+  all <- bind_rows(pi_within, pi_between, sp_within, sp_between)
+  
+  # Adjust within the intended family.
+  # Option A (typical): within each endpoint (PI separate from speed) per genotype
+  # Option B (more conservative): across endpoints too (PI+speed together) per genotype
+  if (correct_across == "within_endpoint") {
+    all <- all %>%
+      group_by(group, endpoint) %>%
+      mutate(p.adj = p.adjust(p, method = p_adjust_method, n = first(n_planned))) %>%
+      ungroup()
+  } else {
+    # across_endpoints: planned n doubles (PI has n_planned, speed has n_planned)
+    all <- all %>%
+      group_by(group) %>%
+      mutate(p.adj = p.adjust(p, method = p_adjust_method, n = first(n_planned) * 2L)) %>%
+      ungroup()
+  }
+  
+  all %>%
+    add_significance("p.adj")
+}
+
 
 
 make_facet_labels <- function(df, denom_len, group_levels, n_label = TRUE) {
@@ -161,10 +255,11 @@ make_facet_labels <- function(df, denom_len, group_levels, n_label = TRUE) {
 
 
 make_plot <- function(df, plot_kind, test_kind, zeroed, alpha,
-                      stim_within, trial_within, stim_between, n_label, 
+                      stim_within, trial_within, stim_between, n_label,
                       col_by_group = TRUE, ylimit,
                       palette_source = c("ggprism", "ggplot2 (hue)"),
-                      ggprism_palette = "colors") {
+                      ggprism_palette = "colors",
+                      stats_all) {
   
   test_kind <- match.arg(test_kind, c("wilcox", "t"))
   
@@ -187,7 +282,11 @@ make_plot <- function(df, plot_kind, test_kind, zeroed, alpha,
              stim_number %in% as.character(stim_within)) %>%
       mutate(stim_number = factor(stim_number, levels = as.character(stim_within)))
     
-    stats <- pairwise_within_group(fdat, y = "pi", x = "stim_number", test = test_kind)
+    stats <- stats_all %>%
+      filter(endpoint == "pi",
+             contrast == "within_trial",
+             trial_sel == as.character(trial_within))
+    
     ymax <- max(fdat$pi, na.rm = TRUE)
     #ylim_upper <- ceiling(ymax * 1.1 * 10) / 10
     stats$y.position <- seq(ylimit * 0.95, by = 0.05, length.out = nrow(stats))
@@ -219,7 +318,11 @@ make_plot <- function(df, plot_kind, test_kind, zeroed, alpha,
              trial %in% c("1", "2")) %>%
       mutate(trial = factor(trial, levels = c("1", "2")))
     
-    stats <- pairwise_within_group(fdat, y = "pi", x = "trial", test = test_kind)
+    stats <- stats_all %>%
+      filter(endpoint == "pi",
+             contrast == "between_trial",
+             stim_sel == as.character(stim_between))
+    
     ymax <- max(fdat$pi, na.rm = TRUE)
     #ylim_upper <- ceiling(ymax * 1.1 * 10) / 10
     stats$y.position <- seq(ylimit * 0.95, by = 0.05, length.out = nrow(stats))
@@ -255,7 +358,11 @@ make_plot <- function(df, plot_kind, test_kind, zeroed, alpha,
              stim_number %in% as.character(stim_within)) %>%
       mutate(stim_number = factor(stim_number, levels = as.character(stim_within)))
     
-    stats <- pairwise_within_group(fdat, y = "mean_pre_stim_speed", x = "stim_number", test = test_kind)
+    stats <- stats_all %>%
+      filter(endpoint == "speed",
+             contrast == "within_trial",
+             trial_sel == as.character(trial_within))
+    
     ymax <- max(fdat$mean_pre_stim_speed, na.rm = TRUE)
     #ylim_upper <- ceiling(ymax * 1.1 * 10) / 10
     stats$y.position <- seq(ylimit * 0.95, by = 0.05, length.out = nrow(stats))
@@ -291,9 +398,13 @@ make_plot <- function(df, plot_kind, test_kind, zeroed, alpha,
              trial %in% c("1", "2")) %>%
       mutate(trial = factor(trial, levels = c("1", "2")))
     
-    stats <- pairwise_within_group(fdat, y = "mean_pre_stim_speed", x = "trial", test = test_kind)
-    #ymax <- max(fdat$mean_pre_stim_speed, na.rm = TRUE)
-    ylim_upper <- ceiling(ymax * 1.1 * 10) / 10
+    stats <- stats_all %>%
+      filter(endpoint == "speed",
+             contrast == "between_trial",
+             stim_sel == as.character(stim_between))
+    
+    ymax <- max(fdat$mean_pre_stim_speed, na.rm = TRUE)
+    #ylim_upper <- ceiling(ymax * 1.1 * 10) / 10
     stats$y.position <- seq(ylimit * 0.95, by = 0.05, length.out = nrow(stats))
     
     facet_labeller <- make_facet_labels(fdat, denom_len = 2, 
@@ -609,12 +720,27 @@ server <- function(input, output, session) {
   output$stim_within_ui <- renderUI({
     df <- raw_data()
     req(!is.null(df))
-    if (!("stim_number" %in% names(df))) return(NULL)
-    stims <- sort(unique(as.character(df$stim_number)))
+    if (!all(c("stim_number","trial") %in% names(df))) return(NULL)
+    
+    # if trial input not ready yet, default to first trial available
+    trials <- sort(unique(as.character(df$trial)))
+    trial_sel <- if (!is.null(input$trial_within)) as.character(input$trial_within) else trials[[1]]
+    
+    stims <- df %>%
+      filter(as.character(trial) == trial_sel) %>%
+      pull(stim_number) %>%
+      as.character() %>%
+      unique() %>%
+      sort()
+    
+    # sensible default selection
+    default <- intersect(c("1","6"), stims)
+    if (length(default) < 2 && length(stims) >= 2) default <- stims[1:2]
+    
     selectizeInput(
       "stim_within", "Within-trial: stim numbers (choose 2+)",
       choices = stims,
-      selected = c(1,6),
+      selected = default,
       multiple = TRUE
     )
   })
@@ -808,26 +934,42 @@ server <- function(input, output, session) {
   output$norm_density_between <- renderPlot({ between_plots()$density })
   output$norm_violin_between <- renderPlot({ between_plots()$violin })
   
+  
+  all_stats <- reactive({
+    df <- processed()
+    req(!is.null(df))
+    
+    req(input$trial_within, input$stim_within, input$stim_between)
+    
+    validate(need(length(input$stim_within) >= 2, "Select at least 2 stim numbers for within-trial comparison."))
+    
+    test_kind <- if (isTRUE(input$use_ttest)) "t" else "wilcox"
+    
+    compute_all_stats(
+      df = df,
+      test_kind = test_kind,
+      trial_within = input$trial_within,
+      stim_within  = input$stim_within,
+      stim_between = input$stim_between,
+      p_adjust_method = "holm",           # or "bonferroni"
+      correct_across  = "within_endpoint" # or "across_endpoints"
+    )
+  })
+  
+  
   # ---- Main plot bundle ----
   plot_bundle <- reactive({
     df <- processed()
     req(!is.null(df))
     
-    if (grepl("within trial", input$plot_kind, ignore.case = TRUE)) {
-      validate(need(!is.null(input$stim_within) && length(input$stim_within) >= 2,
-                    "Select at least 2 stim numbers for within-trial comparison."))
-      validate(need(!is.null(input$trial_within) && nzchar(input$trial_within),
-                    "Select a trial for within-trial comparison."))
-    }
-    
     test_kind <- if (isTRUE(input$use_ttest)) "t" else "wilcox"
     
     make_plot(
       df = df,
-      alpha = input$alpha, 
+      alpha = input$alpha,
       n_label = input$n_label,
       ylimit = input$ylimit,
-      col_by_group = input$col_by_group, 
+      col_by_group = input$col_by_group,
       plot_kind = input$plot_kind,
       test_kind = test_kind,
       zeroed = input$zeroed,
@@ -835,9 +977,11 @@ server <- function(input, output, session) {
       trial_within = input$trial_within,
       stim_between = input$stim_between,
       palette_source = input$palette_source,
-      ggprism_palette = if (!is.null(input$ggprism_palette)) input$ggprism_palette else "colors"
+      ggprism_palette = if (!is.null(input$ggprism_palette)) input$ggprism_palette else "colors",
+      stats_all = all_stats()
     )
   })
+  
   
   output$status_ui <- renderUI({
     df <- raw_data()
