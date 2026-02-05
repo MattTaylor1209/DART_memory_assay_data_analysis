@@ -143,6 +143,8 @@ compute_all_stats <- function(df,
                               trial_within,
                               stim_within,
                               stim_between,
+                              trial_between_a,
+                              trial_between_b,
                               p_adjust_method = "holm",
                               correct_across = c("within_endpoint", "across_endpoints")) {
   
@@ -152,6 +154,8 @@ compute_all_stats <- function(df,
   trial_within  <- as.character(trial_within)
   stim_within   <- as.character(stim_within)
   stim_between  <- as.character(stim_between)
+  trial_between_a <- as.character(trial_between_a)
+  trial_between_b <- as.character(trial_between_b)
   
   # Planned hypothesis count for the endpoint family:
   # - within-trial: all pairs among selected stimuli
@@ -176,12 +180,12 @@ compute_all_stats <- function(df,
   # --- PI: between trials (trial compare) ---
   pi_between <- df %>%
     filter(stim_number == stim_between, trial %in% c("1", "2")) %>%
-    mutate(trial = factor(trial, levels = c("1", "2"))) %>%
+    mutate(trial = factor(trial, levels = c(trial_between_a, trial_between_b))) %>%
     run_pairwise_raw(y = "pi", x = "trial", test_kind = test_kind) %>%
     mutate(
       endpoint  = "pi",
       contrast  = "between_trial",
-      trial_sel = NA_character_,
+      trial_sel = paste0(trial_between_a, "_vs_", trial_between_b),
       stim_sel  = stim_between,
       n_planned = n_planned
     )
@@ -202,12 +206,12 @@ compute_all_stats <- function(df,
   # --- Speed: between trials (trial compare) ---
   sp_between <- df %>%
     filter(stim_number == stim_between, trial %in% c("1", "2")) %>%
-    mutate(trial = factor(trial, levels = c("1", "2"))) %>%
+    mutate(trial = factor(trial, levels = c(trial_between_a, trial_between_b))) %>%
     run_pairwise_raw(y = "mean_pre_stim_speed", x = "trial", test_kind = test_kind) %>%
     mutate(
       endpoint  = "speed",
       contrast  = "between_trial",
-      trial_sel = NA_character_,
+      trial_sel = paste0(trial_between_a, "_vs_", trial_between_b),
       stim_sel  = stim_between,
       n_planned = n_planned
     )
@@ -257,6 +261,7 @@ make_facet_labels <- function(df, denom_len, group_levels, n_label = TRUE) {
 make_plot <- function(df, plot_kind, test_kind, zeroed, alpha,
                       stim_within, trial_within, stim_between, n_label,
                       col_by_group = TRUE, ylimit,
+                      trial_between_a, trial_between_b,
                       palette_source = c("ggprism", "ggplot2 (hue)"),
                       ggprism_palette = "colors",
                       stats_all) {
@@ -315,13 +320,14 @@ make_plot <- function(df, plot_kind, test_kind, zeroed, alpha,
   if (plot_kind == "PI: between trials (trial compare)") {
     fdat <- df %>%
       filter(stim_number %in% as.character(stim_between),
-             trial %in% c("1", "2")) %>%
-      mutate(trial = factor(trial, levels = c("1", "2")))
+             trial %in% c(as.character(trial_between_a), as.character(trial_between_b))) %>%
+      mutate(trial = factor(trial, levels = c(as.character(trial_between_a), as.character(trial_between_b))))
     
     stats <- stats_all %>%
       filter(endpoint == "pi",
              contrast == "between_trial",
-             stim_sel == as.character(stim_between))
+             stim_sel == as.character(stim_between),
+             trial_sel == paste0(as.character(trial_between_a), "_vs_", as.character(trial_between_b)))
     
     ymax <- max(fdat$pi, na.rm = TRUE)
     #ylim_upper <- ceiling(ymax * 1.1 * 10) / 10
@@ -340,7 +346,8 @@ make_plot <- function(df, plot_kind, test_kind, zeroed, alpha,
       facet_wrap(~ group, nrow = 1, labeller = labeller(group = facet_labeller)) +
       ggpubr::stat_pvalue_manual(stats, label = "p.adj.signif", 
                                  tip.length = 0, size = 8, bracket.size = 1, bracket.nudge.y = 0) +
-      labs(title = paste("Between trials, stimulus", stim_between), x = "Trial", y = "Performance index (%)") +
+      labs(title = paste0("Between trials (", trial_between_a, " vs ", trial_between_b, "), stimulus ", stim_between), 
+           x = "Trial", y = "Performance index (%)") +
       coord_cartesian(ylim = c(0, ylimit)) +
       theme_classic() +
       myfacettheme
@@ -395,13 +402,14 @@ make_plot <- function(df, plot_kind, test_kind, zeroed, alpha,
     
     fdat <- df %>%
       filter(stim_number %in% as.character(stim_between),
-             trial %in% c("1", "2")) %>%
-      mutate(trial = factor(trial, levels = c("1", "2")))
+             trial %in% c(as.character(trial_between_a), as.character(trial_between_b))) %>%
+      mutate(trial = factor(trial, levels = c(as.character(trial_between_a), as.character(trial_between_b))))
     
     stats <- stats_all %>%
       filter(endpoint == "speed",
              contrast == "between_trial",
-             stim_sel == as.character(stim_between))
+             stim_sel == as.character(stim_between),
+             trial_sel == paste0(as.character(trial_between_a), "_vs_", as.character(trial_between_b)))
     
     ymax <- max(fdat$mean_pre_stim_speed, na.rm = TRUE)
     #ylim_upper <- ceiling(ymax * 1.1 * 10) / 10
@@ -420,7 +428,8 @@ make_plot <- function(df, plot_kind, test_kind, zeroed, alpha,
       facet_wrap(~ group, nrow = 1, labeller = labeller(group = facet_labeller)) +
       ggpubr::stat_pvalue_manual(stats, label = "p.adj.signif", 
                                  tip.length = 0, size = 8, bracket.size = 1, bracket.nudge.y = 0) +
-      labs(title = paste("Between trials, stimulus", stim_between), x = "Trial", y = "Pre stimulus speed (mm/s)") +
+      labs(title = paste0("Between trials (", trial_between_a, " vs ", trial_between_b, "), stimulus ", stim_between),
+           x = "Trial", y = "Pre stimulus speed (mm/s)") +
       coord_cartesian(ylim = c(0, ylimit)) +
       theme_classic() +
       myfacettheme
@@ -569,6 +578,7 @@ ui <- fluidPage(
         )
       ),
       uiOutput("trial_within_ui"),
+      uiOutput("trial_between_ui"),
       uiOutput("stim_within_ui"),
       uiOutput("stim_between_ui"),
       
@@ -716,6 +726,27 @@ server <- function(input, output, session) {
     trials <- sort(unique(as.character(df$trial)))
     selectInput("trial_within", "Within-trial: trial", choices = trials, selected = trials[[1]])
   })
+  
+  output$trial_between_ui <- renderUI({
+    df <- raw_data()
+    req(!is.null(df))
+    if (!("trial" %in% names(df))) return(NULL)
+    
+    trials <- sort(unique(as.character(df$trial)))
+    if (length(trials) < 2) return(helpText("Need at least 2 trials for between-trial comparisons."))
+    
+    a_def <- if ("1" %in% trials) "1" else trials[[1]]
+    b_def <- if ("2" %in% trials) "2" else trials[[2]]
+    
+    tagList(
+      tags$strong("Between-trials: compare"),
+      fluidRow(
+        column(6, selectInput("trial_between_a", "Trial A", choices = trials, selected = a_def)),
+        column(6, selectInput("trial_between_b", "Trial B", choices = trials, selected = b_def))
+      )
+    )
+  })
+  
   
   output$stim_within_ui <- renderUI({
     df <- raw_data()
@@ -944,6 +975,8 @@ server <- function(input, output, session) {
     validate(need(length(input$stim_within) >= 2, "Select at least 2 stim numbers for within-trial comparison."))
     
     test_kind <- if (isTRUE(input$use_ttest)) "t" else "wilcox"
+    req(input$trial_between_a, input$trial_between_b)
+    validate(need(input$trial_between_a != input$trial_between_b, "Trial A and Trial B must be different."))
     
     compute_all_stats(
       df = df,
@@ -951,8 +984,10 @@ server <- function(input, output, session) {
       trial_within = input$trial_within,
       stim_within  = input$stim_within,
       stim_between = input$stim_between,
-      p_adjust_method = "holm",           # or "bonferroni"
-      correct_across  = "within_endpoint" # or "across_endpoints"
+      trial_between_a = input$trial_between_a,
+      trial_between_b = input$trial_between_b,
+      p_adjust_method = "holm", # or bonferroni
+      correct_across  = "within_endpoint" # or across_endpoints
     )
   })
   
@@ -976,6 +1011,8 @@ server <- function(input, output, session) {
       stim_within = input$stim_within,
       trial_within = input$trial_within,
       stim_between = input$stim_between,
+      trial_between_a = input$trial_between_a,
+      trial_between_b = input$trial_between_b,
       palette_source = input$palette_source,
       ggprism_palette = if (!is.null(input$ggprism_palette)) input$ggprism_palette else "colors",
       stats_all = all_stats()
