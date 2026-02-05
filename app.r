@@ -295,7 +295,7 @@ make_plot <- function(df, plot_kind, test_kind, zeroed, alpha,
     
     ymax <- max(fdat$pi, na.rm = TRUE)
     #ylim_upper <- ceiling(ymax * 1.1 * 10) / 10
-    stats$y.position <- seq(ylimit * 0.95, by = 0.05, length.out = nrow(stats))
+    stats$y.position <- seq(ylimit * 0.95, by = 0, length.out = nrow(stats))
     
     facet_labeller <- make_facet_labels(fdat, denom_len = length(stim_within), 
                                         group_levels = group_levels,
@@ -332,7 +332,7 @@ make_plot <- function(df, plot_kind, test_kind, zeroed, alpha,
     
     ymax <- max(fdat$pi, na.rm = TRUE)
     #ylim_upper <- ceiling(ymax * 1.1 * 10) / 10
-    stats$y.position <- seq(ylimit * 0.95, by = 0.05, length.out = nrow(stats))
+    stats$y.position <- seq(ylimit * 0.95, by = 0, length.out = nrow(stats))
     
     facet_labeller <- make_facet_labels(fdat, denom_len = 2, 
                                         group_levels = group_levels,
@@ -373,7 +373,7 @@ make_plot <- function(df, plot_kind, test_kind, zeroed, alpha,
     
     ymax <- max(fdat$mean_pre_stim_speed, na.rm = TRUE)
     #ylim_upper <- ceiling(ymax * 1.1 * 10) / 10
-    stats$y.position <- seq(ylimit * 0.95, by = 0.05, length.out = nrow(stats))
+    stats$y.position <- seq(ylimit * 0.95, by = 0, length.out = nrow(stats))
     
     facet_labeller <- make_facet_labels(fdat, denom_len = length(stim_within), 
                                         group_levels = group_levels,
@@ -414,7 +414,7 @@ make_plot <- function(df, plot_kind, test_kind, zeroed, alpha,
     
     ymax <- max(fdat$mean_pre_stim_speed, na.rm = TRUE)
     #ylim_upper <- ceiling(ymax * 1.1 * 10) / 10
-    stats$y.position <- seq(ylimit * 0.95, by = 0.05, length.out = nrow(stats))
+    stats$y.position <- seq(ylimit * 0.95, by = 0, length.out = nrow(stats))
     
     facet_labeller <- make_facet_labels(fdat, denom_len = 2, 
                                         group_levels = group_levels,
