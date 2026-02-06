@@ -25,15 +25,27 @@ myfacettheme <- theme(
   axis.title.x = element_text(colour = "black", face = "bold", size = 14),
   axis.text.x  = element_text(colour = "grey30", face = "bold", size = 14),
   axis.ticks   = element_line(linewidth = 1, colour = "black"),
-  panel.border = element_rect(colour = "black", fill = NA, linewidth = 2),
-  panel.grid   = element_blank(),
+  #panel.grid   = element_blank(),
   axis.line = element_blank(),
   legend.title = element_blank(),
   legend.position = "none",
   legend.text  = element_text(colour = "black", size = 10),
-  strip.background = element_rect(colour = "black", linewidth = 2, fill = "grey30"),
-  strip.text.x = element_text(size = 12, face = "bold", colour = "white")
-)
+  panel.border    = element_rect(colour = "black", fill = NA, linewidth = 2),
+  strip.background = element_blank(),
+  strip.text.x = ggtext::element_textbox_simple(
+    colour = "white",
+    size = 12,
+    linetype = 1,
+    linewidth = 2,
+    fill = "grey30",
+    box.colour = "black",
+    lineheight = 1.05,
+    halign = 0.5,
+    valign = 0.5,
+    padding = margin(t = 6, r = 10, b = 6, l = 10),
+    margin  = margin(t = 0, r = 0, b = -2, l = 0)
+  ))
+
 
 # ---- Helpers ----
 required_cols <- c("group", "trial", "stim_number", "gof")
@@ -249,10 +261,16 @@ make_facet_labels <- function(df, denom_len, group_levels, n_label = TRUE) {
     mutate(n = as.integer(round(n)))  # avoids "12.0" etc
   
   lab <- if (isTRUE(n_label)) {
-    lab %>% mutate(label = paste0(as.character(group), " (n = ", n, ")"))
+    lab %>% mutate(
+      label = paste0(
+        "**", as.character(group), "**",
+        "<br><span style='font-weight:normal'>(n = ", n, ")</span>"
+      )
+    )
   } else {
-    lab %>% mutate(label = as.character(group))
+    lab %>% mutate(label = paste0("**", as.character(group), "**"))
   }
+  
   
   out <- setNames(lab$label, as.character(lab$group))
   out[group_levels[group_levels %in% names(out)]]
