@@ -102,7 +102,7 @@ compute_pi_if_needed <- function(df) {
     group_by(group, trial, stim_number) %>%
     summarise(mean_response = mean(max_fitted_amplitude, na.rm = TRUE), .groups = "drop") %>%
     # IMPORTANT: compare as characters to avoid 1 vs "1" issues
-    filter(as.character(trial) == "1", as.character(stim_number) == "1") %>%
+    filter(as.character(trial) %in% c("1", "Training"), as.character(stim_number) == "1") %>%
     transmute(group, scale_factor = mean_response)
   
   df %>%
@@ -192,7 +192,7 @@ compute_all_stats <- function(df,
   
   # --- PI: between trials (trial compare) ---
   pi_between <- df %>%
-    filter(stim_number == stim_between, trial %in% c("1", "2")) %>%
+    filter(stim_number == stim_between, trial %in% c("1", "2", "Training", "Test")) %>%
     mutate(trial = factor(trial, levels = c(trial_between_a, trial_between_b))) %>%
     run_pairwise_raw(y = "pi", x = "trial", test_kind = test_kind) %>%
     mutate(
@@ -218,7 +218,7 @@ compute_all_stats <- function(df,
   
   # --- Speed: between trials (trial compare) ---
   sp_between <- df %>%
-    filter(stim_number == stim_between, trial %in% c("1", "2")) %>%
+    filter(stim_number == stim_between, trial %in% c("1", "2", "Training", "Test")) %>%
     mutate(trial = factor(trial, levels = c(trial_between_a, trial_between_b))) %>%
     run_pairwise_raw(y = "mean_pre_stim_speed", x = "trial", test_kind = test_kind) %>%
     mutate(
