@@ -192,7 +192,7 @@ compute_all_stats <- function(df,
   
   # --- PI: between trials (trial compare) ---
   pi_between <- df %>%
-    filter(stim_number == stim_between, trial %in% c("1", "2", "Training", "Test")) %>%
+    filter(stim_number == stim_between, trial %in% c("1", "2", "3", "Training", "Test")) %>%
     mutate(trial = factor(trial, levels = c(trial_between_a, trial_between_b))) %>%
     run_pairwise_raw(y = "pi", x = "trial", test_kind = test_kind) %>%
     mutate(
@@ -218,7 +218,7 @@ compute_all_stats <- function(df,
   
   # --- Speed: between trials (trial compare) ---
   sp_between <- df %>%
-    filter(stim_number == stim_between, trial %in% c("1", "2", "Training", "Test")) %>%
+    filter(stim_number == stim_between, trial %in% c("1", "2","3", "Training", "Test")) %>%
     mutate(trial = factor(trial, levels = c(trial_between_a, trial_between_b))) %>%
     run_pairwise_raw(y = "mean_pre_stim_speed", x = "trial", test_kind = test_kind) %>%
     mutate(
